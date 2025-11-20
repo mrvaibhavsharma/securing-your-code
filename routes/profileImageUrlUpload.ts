@@ -11,11 +11,34 @@ import { UserModel } from '../models/user'
 import * as utils from '../lib/utils'
 const security = require('../lib/insecurity')
 const request = require('request')
+const { URL } = require('url')
+const net = require('net')
 
 module.exports = function profileImageUrlUpload () {
   return (req: Request, res: Response, next: NextFunction) => {
     if (req.body.imageUrl !== undefined) {
       const url = req.body.imageUrl
+      // SSRF prevention: validate the URL
+      let parsedUrl
+      try {
+        parsedUrl = new URL(url)
+      } catch (e) {
+        res.status(400).send('Invalid imageUrl provided.')
+        return
+      }
+      // Only allow http(s) protocol
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        res.status(400).send('Protocol not allowed.')
+        return
+      }
+      // Only allow specific hostnames (example values, replace as needed)
+      const allowedHosts = ['images.example.com', 'cdn.example.org']
+      // Or disable allowlist and check for localhost/private IPs if allowlist not appropriate:
+      // if (isLocalAddress(parsedUrl.hostname)) { ... }
+      if (!allowedHosts.includes(parsedUrl.hostname)) {
+        res.status(400).send('Host not allowed.')
+        return
+      }
       if (url.match(/(.)*solve\/challenges\/server-side(.)*/) !== null) req.app.locals.abused_ssrf_bug = true
       const loggedInUser = security.authenticatedUsers.get(req.cookies.token)
       if (loggedInUser) {
